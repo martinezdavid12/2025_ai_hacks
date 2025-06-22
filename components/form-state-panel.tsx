@@ -1,15 +1,57 @@
+import { useEffect, useRef, useState } from "react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import type { FormData } from "@/lib/forms"
 import { FileText, Info } from "lucide-react"
 
+import "pdfjs-dist/web/pdf_viewer.css"
+import { GlobalWorkerOptions } from "pdfjs-dist/build/pdf";
+
+// Replace with your installed version (check `package.json`)
+GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+
+
 interface FormStatePanelProps {
   activeForm: FormData | null
   activePdf: File | null
+  pdfFields?: { name: string; type: string }[]
+  filledPdfFields?: Record<string, string>
 }
 
-export default function FormStatePanel({ activeForm, activePdf }: FormStatePanelProps) {
+export default function FormStatePanel({ activeForm, activePdf, pdfFields, filledPdfFields }: FormStatePanelProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
+
+useEffect(() => {
+  if (typeof window === "undefined" || !activePdf) return
+
+  const renderPdf = async () => {
+    const { getDocument } = await import("pdfjs-dist")
+    const fileReader = new FileReader()
+    fileReader.onload = async function () {
+      const typedarray = new Uint8Array(this.result as ArrayBuffer)
+      const loadingTask = getDocument({ data: typedarray })
+      const pdf = await loadingTask.promise
+      setPdfDoc(pdf)
+
+      const page = await pdf.getPage(1)
+      const viewport = page.getViewport({ scale: 1.5 })
+      const canvas = canvasRef.current
+      if (canvas) {
+        const context = canvas.getContext("2d")
+        canvas.height = viewport.height
+        canvas.width = viewport.width
+        await page.render({ canvasContext: context!, viewport }).promise
+      }
+    }
+    fileReader.readAsArrayBuffer(activePdf)
+  }
+
+  renderPdf()
+}, [activePdf, pdfFields, filledPdfFields])
+
+
   if (!activeForm && !activePdf) {
     return (
       <Card className="h-full flex items-center justify-center border-dashed border-gray-300 dark:border-gray-700">
@@ -41,9 +83,23 @@ export default function FormStatePanel({ activeForm, activePdf }: FormStatePanel
               <br />
               Type: {activePdf.type}
             </p>
-            <p className="text-sm text-foreground mt-4">
-              You can now ask questions about the content of this PDF in the chat window.
-            </p>
+            <canvas ref={canvasRef} className="w-full border rounded" />
+            {pdfFields && pdfFields.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <h4 className="text-sm font-semibold text-foreground">Detected PDF Fields</h4>
+                <ul className="text-sm space-y-1">
+                  {pdfFields.map((field) => (
+                    <li key={field.name} className="flex flex-col">
+                      <span className="font-medium">{field.name}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {field.type}
+                        {filledPdfFields?.[field.name] ? ` — Value: "${filledPdfFields[field.name]}"` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

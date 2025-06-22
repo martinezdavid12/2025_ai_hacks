@@ -19,46 +19,45 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "No prompt provided with PDF." }), { status: 400 })
     }
 
-    if (!process.env.LETTA_AGENT_ID_SOCIAL_AGENT) {
+    const agentId = process.env.LETTA_AGENT_ID_SOCIAL_AGENT
+    if (!agentId) {
       throw new Error("LETTA_AGENT_ID_SOCIAL_AGENT is not set.")
     }
 
     const fileBuffer = await pdfFile.arrayBuffer()
     let fields: { name: string; type: string }[] = []
+    let textNote = ""
 
-    // Try extracting form fields
     try {
       const pdfDoc = await PDFDocument.load(fileBuffer)
-      const form = pdfDoc.getForm()
-      fields = form.getFields().map((field) => ({
-        name: field.getName(),
-        type: field.constructor.name,
-      }))
+
+      try {
+        const form = pdfDoc.getForm()
+        fields = form.getFields().map((field) => ({
+          name: field.getName(),
+          type: field.constructor.name,
+        }))
+      } catch {
+        console.warn("[Letta PDF] No AcroForm fields found in PDF.")
+      }
+
+      // Note: pdf-lib cannot extract page text; add a placeholder if needed.
+      textNote = "(Note: Full text extraction is not available in this mode. Only form fields are accessible.)"
     } catch (err) {
-      console.warn("[Letta PDF] No form fields found or PDF parsing failed:", err)
+      console.warn("[Letta PDF] Failed to parse PDF:", err)
     }
 
-    const messagesForLetta: any[] = [
+    const messagesForLetta = [
       {
         role: "user",
-        content: [
-          { type: "text", text: prompt },
-          {
-            type: "file",
-            data: Buffer.from(fileBuffer).toString("base64"),
-            mimeType: pdfFile.type || "application/pdf",
-          },
-        ],
+        content: `${prompt}\n\n${textNote}`,
       },
     ]
 
-    const stream = await lettaCloud.client.agents.messages.createStream(
-      process.env.LETTA_AGENT_ID_SOCIAL_AGENT,
-      {
-        messages: messagesForLetta,
-        streamTokens: true,
-      }
-    )
+    const stream = await lettaCloud.client.agents.messages.createStream(agentId, {
+      messages: messagesForLetta,
+      streamTokens: true,
+    })
 
     const fieldInfoPrefix = `@@PDF_FIELDS:${JSON.stringify(fields)}\n`
 
