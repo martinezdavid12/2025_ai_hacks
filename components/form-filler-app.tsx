@@ -18,6 +18,7 @@ import {
   User,
   MessageSquare,
   Landmark,
+  Mic,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import ReactMarkdown from "react-markdown"
@@ -29,11 +30,19 @@ interface Message {
   content: string
 }
 
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any
+  }
+}
+
 export default function LettaChatApp() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [vapiActive, setVapiActive] = useState(false)
+  const [context, setContext] = useState("")
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -41,6 +50,18 @@ export default function LettaChatApp() {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: "smooth" })
     }
   }, [messages])
+
+  const playWithVapi = async (text: string) => {
+    try {
+      await fetch("/api/vapi-speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      })
+    } catch (err) {
+      console.error("VAPI playback failed:", err)
+    }
+  }
 
   const handleSubmit = async (e?: FormEvent<HTMLFormElement>) => {
     e?.preventDefault()
@@ -53,6 +74,25 @@ export default function LettaChatApp() {
     sendMessage(userInput)
   }
 
+  const handleVapiClick = () => {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)()
+    recognition.lang = "en-US"
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    recognition.onstart = () => setVapiActive(true)
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      setInput(transcript)
+      setVapiActive(false)
+      sendMessage(transcript)
+    }
+    recognition.onerror = () => setVapiActive(false)
+    recognition.onend = () => setVapiActive(false)
+
+    recognition.start()
+  }
+
   const sendMessage = async (prompt: string) => {
     setIsLoading(true)
     const assistantMessageId = Date.now().toString() + "-assistant"
@@ -62,7 +102,7 @@ export default function LettaChatApp() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, context }),
       })
 
       if (!response.ok || !response.body) throw new Error("API request failed")
@@ -108,6 +148,8 @@ export default function LettaChatApp() {
           /* ignore */
         }
       }
+
+      if (assistantContent.trim()) playWithVapi(assistantContent.replace(/\\n/g, "\n"))
     } catch (err) {
       console.error(err)
       setMessages((prev) => [
@@ -144,6 +186,18 @@ export default function LettaChatApp() {
             <CardDescription>Chat with your digital caseworker assistant.</CardDescription>
           </CardHeader>
 
+          <CardContent className="p-4 bg-white space-y-2">
+            <Input
+              placeholder="Optional context for Letta (e.g. your name, case type...)"
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              className="text-sm"
+            />
+            <Button onClick={handleVapiClick} disabled={vapiActive} size="sm">
+              <Mic className="w-4 h-4 mr-1" /> {vapiActive ? "Listening..." : "Speak a message"}
+            </Button>
+          </CardContent>
+
           <CardContent className="flex-grow p-0 bg-white">
             <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
               {messages.length === 0 && (
@@ -169,13 +223,13 @@ export default function LettaChatApp() {
                     )}
                     <div
                       className={cn(
-                        "rounded-lg px-3 py-2 max-w-[80%] shadow-sm text-sm",
+                        "rounded-lg px-3 py-2 max-w-[80%] shadow-sm text-sm whitespace-pre-line",
                         msg.role === "user"
                           ? "bg-blue-600 text-white"
                           : "bg-gray-100 text-gray-800"
                       )}
                     >
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown>{msg.content.replace(/\\n/g, "\n")}</ReactMarkdown>
                     </div>
                     {msg.role === "user" && (
                       <Avatar className="w-8 h-8 border flex-shrink-0 bg-gray-100">
