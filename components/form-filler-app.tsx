@@ -169,10 +169,43 @@ export default function LettaChatApp() {
     }
   }
 
+  const handleGeneratePdf = (formName: string) => {
+    // For demo purposes, use a hardcoded path for CalFresh and Medi-Cal
+    const localFileMap: Record<string, string> = {
+      "CalFresh": "/pdfs/binder1.pdf",
+      "Medi-Cal": "/pdfs/saws_1_filled.pdf",
+
+    }
+
+    const filePath = localFileMap[formName]
+    if (filePath) {
+      setPdfUrl(filePath)
+    } else {
+      alert(`${formName} form generation not implemented yet.`)
+    }
+  }
+
+  const formList = [
+    "All",
+    "CalFresh",
+    "Medi-Cal",
+    "Low Income Housing",
+    "Emergency Relief",
+    "Unemployment Insurance",
+    "Disability Insurance",
+    "Paid Family Leave",
+    "California Lifeline",
+    "Child Care Assistance",
+    "Utility Assistance",
+    "In-Home Supportive Services",
+    "CalWORKs",
+    "General Assistance"
+  ]
+
   return (
     <div className="h-screen w-full p-4 bg-gray-50">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
-        {/* Chat Pane */}
+        {/* Chat Pane (Left) */}
         <Card className="flex flex-col h-full shadow-lg">
           <CardHeader className="border-b bg-white">
             <CardTitle className="flex items-center gap-2">
@@ -265,14 +298,29 @@ export default function LettaChatApp() {
           </CardFooter>
         </Card>
 
-        {/* PDF Preview Pane */}
+        {/* Forms and PDF Preview Pane (Right) */}
         <Card className="flex flex-col h-full shadow-lg">
           <CardHeader className="border-b bg-white">
             <CardTitle>PDF Preview</CardTitle>
-            <CardDescription>Upload and view a document</CardDescription>
+            <CardDescription>Upload, view, or generate a document</CardDescription>
           </CardHeader>
           <CardContent className="p-4 space-y-4 bg-white flex-grow overflow-hidden">
             <Input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Supported Forms:</p>
+              <div className="flex flex-col gap-2">
+                {formList.map((form) => (
+                  <Button
+                    key={form}
+                    onClick={() => handleGeneratePdf(form)}
+                  >
+                    {form} Form
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             {pdfUrl ? (
               <iframe
                 src={pdfUrl}
@@ -280,7 +328,7 @@ export default function LettaChatApp() {
                 className="w-full h-[calc(100%-60px)] border rounded"
               />
             ) : (
-              <div className="text-gray-400 text-sm mt-4">No PDF uploaded</div>
+              <div className="text-gray-400 text-sm mt-4">No PDF uploaded or generated</div>
             )}
           </CardContent>
         </Card>
