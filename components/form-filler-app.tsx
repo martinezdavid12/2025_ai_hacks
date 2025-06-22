@@ -43,6 +43,7 @@ export default function LettaChatApp() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [vapiActive, setVapiActive] = useState(false)
   const [context, setContext] = useState("")
+  const [showFormButtons, setShowFormButtons] = useState(true)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -170,16 +171,14 @@ export default function LettaChatApp() {
   }
 
   const handleGeneratePdf = (formName: string) => {
-    // For demo purposes, use a hardcoded path for CalFresh and Medi-Cal
     const localFileMap: Record<string, string> = {
-      "CalFresh": "/pdfs/binder1.pdf",
-      "Medi-Cal": "/pdfs/saws_1_filled.pdf",
-
+      "CalFresh": "/pdfs/saws_1_filled_skylar.pdf",
+      "Medi-Cal": "/pdfs/binder1.pdf",
     }
-
     const filePath = localFileMap[formName]
     if (filePath) {
       setPdfUrl(filePath)
+      setShowFormButtons(false)
     } else {
       alert(`${formName} form generation not implemented yet.`)
     }
@@ -194,7 +193,6 @@ export default function LettaChatApp() {
     "Unemployment Insurance",
     "Disability Insurance",
     "Paid Family Leave",
-    "California Lifeline",
     "Child Care Assistance",
     "Utility Assistance",
     "In-Home Supportive Services",
@@ -307,19 +305,21 @@ export default function LettaChatApp() {
           <CardContent className="p-4 space-y-4 bg-white flex-grow overflow-hidden">
             <Input type="file" accept="application/pdf" onChange={handlePdfUpload} />
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Supported Forms:</p>
-              <div className="flex flex-col gap-2">
-                {formList.map((form) => (
-                  <Button
-                    key={form}
-                    onClick={() => handleGeneratePdf(form)}
-                  >
-                    {form} Form
-                  </Button>
-                ))}
+            {showFormButtons && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Supported Forms:</p>
+                <div className="flex flex-col gap-2">
+                  {formList.map((form) => (
+                    <Button
+                      key={form}
+                      onClick={() => handleGeneratePdf(form)}
+                    >
+                      {form} Form
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {pdfUrl ? (
               <iframe
