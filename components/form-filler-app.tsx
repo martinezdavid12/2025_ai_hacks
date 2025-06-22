@@ -22,6 +22,7 @@ type ActiveMode = "form" | "pdf" | "none"
 
 export default function FormFillerApp() {
   const [messages, setMessages] = useState<Message[]>([])
+  const [pdfFields, setPdfFields] = useState<{ name: string; type: string }[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [activeForm, setActiveForm] = useState<AppFormData | null>(null)
@@ -40,6 +41,7 @@ export default function FormFillerApp() {
 
   const resetChatAndState = () => {
     setMessages([])
+    setPdfFields([])
     setInput("")
     setIsLoading(false)
   }
@@ -91,22 +93,12 @@ export default function FormFillerApp() {
       if (nextIndex < activeForm.fields.length) {
         setCurrentFieldIndex(nextIndex)
         const nextQuestion = activeForm.fields[nextIndex].question
-        sendMessage(
-          `My answer was "${userAnswer}". For the "${activeForm.name}", please ask the next question: "${nextQuestion}"`,
-          "form",
-        )
+        sendMessage(`My answer was "${userAnswer}". For the "${activeForm.name}", please ask the next question: "${nextQuestion}"`, "form")
       } else {
-        sendMessage(
-          `My final answer for the "${activeForm.name}" was "${userAnswer}". The form is complete. Please confirm and provide a summary.`,
-          "form",
-        )
+        sendMessage(`My final answer for the "${activeForm.name}" was "${userAnswer}". The form is complete. Please confirm and provide a summary.`, "form")
       }
     } else if (activeMode === "pdf" && selectedPdfFile) {
-      sendMessage(
-        `Regarding the PDF "${selectedPdfFile.name}", my question is: "${userAnswer}"`,
-        "pdf",
-        selectedPdfFile,
-      )
+      sendMessage(`Regarding the PDF "${selectedPdfFile.name}", my question is: "${userAnswer}"`, "pdf", selectedPdfFile)
     } else {
       sendMessage(userAnswer, "none")
     }
@@ -140,44 +132,77 @@ export default function FormFillerApp() {
       const decoder = new TextDecoder()
       let assistantResponseContent = ""
       let accumulatedChunk = ""
+      let doneReading = false
 
-      while (true) {
+      while (!doneReading) {
         const { done, value } = await reader.read()
-        if (done) break
-        accumulatedChunk += decoder.decode(value, { stream: true })
-        const boundary = accumulatedChunk.lastIndexOf("\n")
-        if (boundary === -1 && !done) continue
+        doneReading = done
 
-        const processableChunk = accumulatedChunk.substring(0, boundary)
-        accumulatedChunk = accumulatedChunk.substring(boundary + 1)
-        const lines = processableChunk.split("\n")
+        const chunk = decoder.decode(value || new Uint8Array(), { stream: !done })
+        accumulatedChunk += chunk
+
+        const lines = accumulatedChunk.split("\n")
+        accumulatedChunk = lines.pop() || ""
 
         for (const line of lines) {
-          if (apiEndpoint === "/api/chat" && line.startsWith("0:")) {
-            try {
-              assistantResponseContent += JSON.parse(line.substring(2))
-            } catch {}
-          } else if (apiEndpoint === "/api/analyze-pdf") {
-            assistantResponseContent += line + (lines.length > 1 ? "\n" : "")
-          }
-        }
+          const trimmed = line.trim()
+          if (!trimmed || ["f:", "e:", "d:"].some(prefix => trimmed.startsWith(prefix))) continue
 
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: assistantResponseContent } : msg)),
-        )
+          try {
+            let parsed
+            if (apiEndpoint === "/api/chat" && trimmed.startsWith("0:")) {
+              parsed = JSON.parse(trimmed.slice(2))
+            } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+              continue // Skip JSON blobs that aren't assistant text
+            } else {
+              parsed = trimmed
+            }
+
+            assistantResponseContent += parsed
+            if (assistantResponseContent.length > 10000) throw new Error("Output too long")
+
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId ? { ...msg, content: assistantResponseContent } : msg
+              )
+            )
+          } catch (err) {
+            console.warn("Skipping malformed or non-message line:", line)
+          }
+
+        if (trimmed.startsWith("@@PDF_FIELDS:")) {
+        try {
+          const fieldData = trimmed.replace("@@PDF_FIELDS:", "")
+          const parsedFields = JSON.parse(fieldData)
+          setPdfFields(parsedFields)
+        } catch (err) {
+          console.warn("Failed to parse PDF fields metadata:", err)
+        }
+        continue
       }
 
-      if (accumulatedChunk.length > 0) {
-        if (apiEndpoint === "/api/chat" && accumulatedChunk.startsWith("0:")) {
-          try {
-            assistantResponseContent += JSON.parse(accumulatedChunk.substring(2))
-          } catch {}
-        } else if (apiEndpoint === "/api/analyze-pdf") {
-          assistantResponseContent += accumulatedChunk
         }
-        setMessages((prev) =>
-          prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: assistantResponseContent } : msg)),
-        )
+      }
+
+      if (accumulatedChunk.trim()) {
+        try {
+          const finalLine = accumulatedChunk.trim()
+          let parsed
+          if (apiEndpoint === "/api/chat" && finalLine.startsWith("0:")) {
+            parsed = JSON.parse(finalLine.slice(2))
+          } else {
+            parsed = finalLine
+          }
+
+          assistantResponseContent += parsed
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: assistantResponseContent } : msg
+            )
+          )
+        } catch {
+          console.warn("Unable to parse final chunk:", accumulatedChunk)
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error)

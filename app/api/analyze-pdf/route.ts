@@ -1,6 +1,9 @@
-// No changes needed from the version that correctly handles PDF uploads.
-// Ensure this file exists and is correctly implemented as in previous steps.
 import { lettaCloud } from "@letta-ai/vercel-ai-sdk-provider"
+import { PDFDocument } from "pdf-lib"
+
+export const config = {
+  runtime: "nodejs",
+}
 
 export async function POST(req: Request) {
   try {
@@ -11,14 +14,30 @@ export async function POST(req: Request) {
     if (!pdfFile) {
       return new Response(JSON.stringify({ error: "No PDF file provided." }), { status: 400 })
     }
+
     if (!prompt) {
       return new Response(JSON.stringify({ error: "No prompt provided with PDF." }), { status: 400 })
     }
+
     if (!process.env.LETTA_AGENT_ID_SOCIAL_AGENT) {
       throw new Error("LETTA_AGENT_ID_SOCIAL_AGENT is not set.")
     }
 
     const fileBuffer = await pdfFile.arrayBuffer()
+    let fields: { name: string; type: string }[] = []
+
+    // Try extracting form fields
+    try {
+      const pdfDoc = await PDFDocument.load(fileBuffer)
+      const form = pdfDoc.getForm()
+      fields = form.getFields().map((field) => ({
+        name: field.getName(),
+        type: field.constructor.name,
+      }))
+    } catch (err) {
+      console.warn("[Letta PDF] No form fields found or PDF parsing failed:", err)
+    }
+
     const messagesForLetta: any[] = [
       {
         role: "user",
@@ -33,22 +52,36 @@ export async function POST(req: Request) {
       },
     ]
 
-    const stream = await lettaCloud.client.agents.messages.createStream(process.env.LETTA_AGENT_ID_SOCIAL_AGENT, {
-      messages: messagesForLetta,
-      streamTokens: true,
-    })
+    const stream = await lettaCloud.client.agents.messages.createStream(
+      process.env.LETTA_AGENT_ID_SOCIAL_AGENT,
+      {
+        messages: messagesForLetta,
+        streamTokens: true,
+      }
+    )
+
+    const fieldInfoPrefix = `@@PDF_FIELDS:${JSON.stringify(fields)}\n`
 
     const readableStream = new ReadableStream({
       async start(controller) {
+        controller.enqueue(new TextEncoder().encode(fieldInfoPrefix))
+
         for await (const chunk of stream) {
           if (chunk.messageType === "assistant_message" && chunk.content) {
             controller.enqueue(new TextEncoder().encode(chunk.content))
           }
         }
+
         controller.close()
       },
     })
-    return new Response(readableStream, { headers: { "Content-Type": "text/plain; charset=utf-8" } })
+
+    return new Response(readableStream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
+      },
+    })
   } catch (error: any) {
     console.error("[Letta PDF API Error]", error)
     return new Response(JSON.stringify({ error: error.message || "Failed to process PDF." }), {
