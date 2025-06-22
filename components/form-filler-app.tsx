@@ -12,8 +12,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, User, MessageSquare } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  Send,
+  Loader2,
+  User,
+  MessageSquare,
+  Landmark,
+} from "lucide-react"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import ReactMarkdown from "react-markdown"
 import { cn } from "@/lib/utils"
 
@@ -27,6 +33,7 @@ export default function LettaChatApp() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -89,7 +96,6 @@ export default function LettaChatApp() {
         }
       }
 
-      // process remaining buffer
       if (buffer && buffer.startsWith("0:")) {
         try {
           assistantContent += JSON.parse(buffer.slice(2))
@@ -113,85 +119,118 @@ export default function LettaChatApp() {
     }
   }
 
+  const handlePdfUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file && file.type === "application/pdf") {
+      const url = URL.createObjectURL(file)
+      setPdfUrl(url)
+    }
+  }
+
   return (
-    <div className="h-full flex justify-center p-4">
-      <Card className="w-full max-w-3xl flex flex-col h-full">
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center">
-            <Avatar className="w-8 h-8 mr-2 border">
-              <AvatarImage src="/placeholder.svg?text=SA" alt="Letta" />
-              <AvatarFallback>LT</AvatarFallback>
-            </Avatar>
-            Letta
-          </CardTitle>
-          <CardDescription>Chat with your digital caseworker assistant.</CardDescription>
-        </CardHeader>
+    <div className="h-screen w-full p-4 bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+        {/* Chat Pane */}
+        <Card className="flex flex-col h-full shadow-lg">
+          <CardHeader className="border-b bg-white">
+            <CardTitle className="flex items-center gap-2">
+              <Avatar className="w-8 h-8 border bg-gray-100">
+                <AvatarFallback>
+                  <Landmark className="h-5 w-5 text-gray-600" />
+                </AvatarFallback>
+              </Avatar>
+              Letta
+            </CardTitle>
+            <CardDescription>Chat with your digital caseworker assistant.</CardDescription>
+          </CardHeader>
 
-        <CardContent className="flex-grow p-0">
-          <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground flex flex-col items-center justify-center h-full">
-                <MessageSquare className="w-16 h-16 mb-4" />
-                <p className="text-lg font-medium">Welcome to Letta</p>
-                <p className="text-sm">Ask any question to get started.</p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn("flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
-                >
-                  {msg.role === "assistant" && (
-                    <Avatar className="w-8 h-8 border flex-shrink-0">
-                      <AvatarImage src="/placeholder.svg?text=SA" alt="Letta" />
-                      <AvatarFallback>LT</AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div
-                    className={cn(
-                      "rounded-lg px-3 py-2 max-w-[80%] shadow-sm",
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                  {msg.role === "user" && (
-                    <Avatar className="w-8 h-8 border flex-shrink-0">
-                      <AvatarFallback>
-                        <User size={16} />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
+          <CardContent className="flex-grow p-0 bg-white">
+            <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
+              {messages.length === 0 && (
+                <div className="text-center text-muted-foreground flex flex-col items-center justify-center h-full">
+                  <MessageSquare className="w-16 h-16 mb-4 text-gray-400" />
+                  <p className="text-lg font-medium text-gray-700">Welcome to Letta</p>
+                  <p className="text-sm text-gray-500">Ask any question to get started.</p>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </CardContent>
+              )}
 
-        <CardFooter className="border-t p-3">
-          <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
-            <Input
-              placeholder="Type your message..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isLoading}
-              className="flex-grow"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={isLoading || !input.trim()}
-              aria-label="Send"
-            >
-              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            </Button>
-          </form>
-        </CardFooter>
-      </Card>
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn("flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
+                  >
+                    {msg.role === "assistant" && (
+                      <Avatar className="w-8 h-8 border flex-shrink-0 bg-gray-100">
+                        <AvatarFallback>
+                          <Landmark className="h-4 w-4 text-gray-600" />
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div
+                      className={cn(
+                        "rounded-lg px-3 py-2 max-w-[80%] shadow-sm text-sm",
+                        msg.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-800"
+                      )}
+                    >
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                    {msg.role === "user" && (
+                      <Avatar className="w-8 h-8 border flex-shrink-0 bg-gray-100">
+                        <AvatarFallback>
+                          <User size={16} className="text-gray-600" />
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+
+          <CardFooter className="border-t p-3 bg-white">
+            <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
+              <Input
+                placeholder="Type your message..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isLoading}
+                className="flex-grow"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={isLoading || !input.trim()}
+                aria-label="Send"
+              >
+                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              </Button>
+            </form>
+          </CardFooter>
+        </Card>
+
+        {/* PDF Preview Pane */}
+        <Card className="flex flex-col h-full shadow-lg">
+          <CardHeader className="border-b bg-white">
+            <CardTitle>PDF Preview</CardTitle>
+            <CardDescription>Upload and view a document</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4 bg-white flex-grow overflow-hidden">
+            <Input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+            {pdfUrl ? (
+              <iframe
+                src={pdfUrl}
+                title="PDF Preview"
+                className="w-full h-[calc(100%-60px)] border rounded"
+              />
+            ) : (
+              <div className="text-gray-400 text-sm mt-4">No PDF uploaded</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
